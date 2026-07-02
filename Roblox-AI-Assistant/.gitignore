@@ -1,0 +1,19 @@
+# Python virtual environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Local user configurations and keys
+.env
+config.json
+
+# Editors and system files
+.DS_Store
+.vscode/
+.idea/
+
+# Rojo built artifacts (optional)
+*.rbxm
+*.rbxmx

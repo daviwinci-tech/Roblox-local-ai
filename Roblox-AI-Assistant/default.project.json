@@ -1,0 +1,39 @@
+{
+  "name": "RobloxAIAssistant",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "RobloxAIAssistant": {
+        "$className": "Folder",
+        "Main": {
+          "$path": "src/Main.server.lua"
+        },
+        "Api": {
+          "$path": "src/Api.lua"
+        },
+        "UI": {
+          "$path": "src/UI.lua"
+        },
+        "Theme": {
+          "$path": "src/Theme.lua"
+        },
+        "Widgets": {
+          "$path": "src/Widgets.lua"
+        },
+        "Insert": {
+          "$path": "src/Insert.lua"
+        },
+        "Fix": {
+          "$path": "src/Fix.lua"
+        },
+        "Explain": {
+          "$path": "src/Explain.lua"
+        },
+        "Settings": {
+          "$path": "src/Settings.lua"
+        }
+      }
+    }
+  }
+}

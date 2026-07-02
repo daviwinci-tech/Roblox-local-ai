@@ -1,0 +1,6 @@
+{
+  "name": "Roblox AI Assistant",
+  "description": "Lokální AI asistent a programovací společník pro Roblox Studio s integrovaným simulátorem pluginu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
