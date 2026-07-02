@@ -6,6 +6,7 @@
 ]]
 
 local HttpService = game:GetService("HttpService")
+local Selection = game:GetService("Selection")
 local Theme = require(script.Parent.Theme)
 local Api = require(script.Parent.Api)
 local Insert = require(script.Parent.Insert)
@@ -33,6 +34,29 @@ local statusLabel = nil
 local isGenerating = false
 local lastAIResponseText = ""
 local messagesHistory = {} -- Historie zpráv pro uchování kontextu v chat endpointu
+
+local availableModels = {Settings.GetModel()}
+local currentModelIndex = 1
+
+local function findInTable(t, val)
+    for i, v in ipairs(t) do
+        if v == val then return i end
+    end
+    return nil
+end
+
+local function getSelectionContext()
+    local success, currentSelection = pcall(function()
+        return Selection:Get()
+    end)
+    if success and currentSelection and #currentSelection > 0 then
+        local primary = currentSelection[1]
+        local path = primary:GetFullName()
+        local className = primary.ClassName
+        return "\n*(Poznámka pro AI: Uživatel má v Roblox Studiu označený objekt '" .. primary.Name .. "' (třída: " .. className .. ") s cestou " .. path .. ")*"
+    end
+    return ""
+end
 
 -- Pomocná funkce pro vytvoření UICorner
 local function addCorner(parent, radius)
@@ -273,7 +297,13 @@ local function startGeneration(promptText, mode)
     -- Přidání uživatelského promptu do chatu a historie
     if mode == "Generate" then
         addChatBubble("User", promptText, colors)
-        table.insert(messagesHistory, {role = "user", content = promptText})
+        
+        local context = getSelectionContext()
+        local apiPrompt = promptText
+        if context ~= "" then
+            apiPrompt = promptText .. "\n\n" .. context
+        end
+        table.insert(messagesHistory, {role = "user", content = apiPrompt})
         promptInput.Text = ""
     elseif mode == "Fix" then
         addChatBubble("User", "🔧 Opravit vybraný skript v Exploreru", colors)
@@ -379,6 +409,16 @@ local function testConnection()
             end
         end
         
+        if health.success and health.available_models and #health.available_models > 0 then
+            availableModels = health.available_models
+            local foundIndex = findInTable(availableModels, Settings.GetModel())
+            if foundIndex then
+                currentModelIndex = foundIndex
+            else
+                currentModelIndex = 1
+            end
+        end
+        
         -- Přidáme log do chatu o testu připojení
         addChatBubble("System", health.message, colors)
     end)
@@ -474,6 +514,20 @@ local function applyThemeColors(colors)
             modelInput.BackgroundColor3 = colors.Background
             modelInput.TextColor3 = colors.Text
             modelInput.UIStroke.Color = colors.Border
+        end
+        
+        local prevBtn = settingsPanel:FindFirstChild("PrevModelBtn")
+        if prevBtn then
+            prevBtn.BackgroundColor3 = colors.Button
+            prevBtn.TextColor3 = colors.ButtonText
+            prevBtn.UIStroke.Color = colors.Border
+        end
+        
+        local nextBtn = settingsPanel:FindFirstChild("NextModelBtn")
+        if nextBtn then
+            nextBtn.BackgroundColor3 = colors.Button
+            nextBtn.TextColor3 = colors.ButtonText
+            nextBtn.UIStroke.Color = colors.Border
         end
     end
     
@@ -717,11 +771,46 @@ function UI.CreateInterface(parent, plugin)
     modelLabel.TextXAlignment = Enum.TextXAlignment.Left
     modelLabel.Parent = settingsPanel
     
+    -- Funkce pro cyklování modelů
+    local function cycleModel(direction)
+        if #availableModels <= 1 then return end
+        currentModelIndex = currentModelIndex + direction
+        if currentModelIndex < 1 then
+            currentModelIndex = #availableModels
+        elseif currentModelIndex > #availableModels then
+            currentModelIndex = 1
+        end
+        local newModel = availableModels[currentModelIndex]
+        Settings.SetModel(newModel)
+        if modelInput then
+            modelInput.Text = newModel
+        end
+        print("[Roblox AI Assistant] Model přepnut na: " .. newModel)
+    end
+
+    -- Tlačítko zpět pro model
+    local prevModelBtn = Instance.new("TextButton")
+    prevModelBtn.Name = "PrevModelBtn"
+    prevModelBtn.Size = UDim2.new(0, 22, 0, 24)
+    prevModelBtn.Position = UDim2.new(0, 0, 0, 44)
+    prevModelBtn.BackgroundColor3 = colors.Button
+    prevModelBtn.Text = "<"
+    prevModelBtn.TextColor3 = colors.ButtonText
+    prevModelBtn.Font = Enum.Font.SourceSansBold
+    prevModelBtn.TextSize = 12
+    prevModelBtn.Parent = settingsPanel
+    addCorner(prevModelBtn, 4)
+    addStroke(prevModelBtn, colors.Border, 1)
+    
+    prevModelBtn.MouseButton1Click:Connect(function()
+        cycleModel(-1)
+    end)
+
     -- TextBox k ručnímu zápisu modelu
     modelInput = Instance.new("TextBox")
     modelInput.Name = "ModelInput"
-    modelInput.Size = UDim2.new(1, 0, 0, 24)
-    modelInput.Position = UDim2.new(0, 0, 0, 44)
+    modelInput.Size = UDim2.new(1, -56, 0, 24)
+    modelInput.Position = UDim2.new(0, 28, 0, 44)
     modelInput.BackgroundColor3 = colors.Background
     modelInput.Text = Settings.GetModel()
     modelInput.TextColor3 = colors.Text
@@ -736,6 +825,24 @@ function UI.CreateInterface(parent, plugin)
             Settings.SetModel(modelInput.Text)
             print("[Roblox AI Assistant] Model změněn na: " .. modelInput.Text)
         end
+    end)
+
+    -- Tlačítko vpřed pro model
+    local nextModelBtn = Instance.new("TextButton")
+    nextModelBtn.Name = "NextModelBtn"
+    nextModelBtn.Size = UDim2.new(0, 22, 0, 24)
+    nextModelBtn.Position = UDim2.new(1, -22, 0, 44)
+    nextModelBtn.BackgroundColor3 = colors.Button
+    nextModelBtn.Text = ">"
+    nextModelBtn.TextColor3 = colors.ButtonText
+    nextModelBtn.Font = Enum.Font.SourceSansBold
+    nextModelBtn.TextSize = 12
+    nextModelBtn.Parent = settingsPanel
+    addCorner(nextModelBtn, 4)
+    addStroke(nextModelBtn, colors.Border, 1)
+    
+    nextModelBtn.MouseButton1Click:Connect(function()
+        cycleModel(1)
     end)
     
     -- Popisek adresy backendu
