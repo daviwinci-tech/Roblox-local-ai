@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -131,14 +132,35 @@ app.post("/api/explain", async (req, res) => {
   }
 });
 
-// Zpřístupnění zdrojových souborů Roblox-AI-Assistant jako statických nebo ke stažení
-app.get("/api/files", async (req, res) => {
-  // Vrátí přehled souborů projektu pro náš průzkumník v Reactu
+// Zpřístupnění zdrojových souborů Roblox-AI-Assistant pro dokumentaci a kopírování
+app.get("/api/project-files", async (req, res) => {
   try {
-    // Definujeme statický přehled, abychom se vyhnuli zbytečnému I/O, nebo ho můžeme poslat přímo
-    res.json({ status: "ok" });
-  } catch (error) {
-    res.status(500).json({ error: "Chyba při čtení souborů" });
+    const basePath = path.join(process.cwd(), "Roblox-AI-Assistant");
+    const filesToRead = [
+      { name: "Main.server.lua", path: "src/Main.server.lua" },
+      { name: "app.py", path: "backend/app.py" },
+      { name: "requirements.txt", path: "requirements.txt" },
+      { name: "default.project.json", path: "default.project.json" },
+      { name: "UI.lua", path: "src/UI.lua" },
+      { name: "Api.lua", path: "src/Api.lua" }
+    ];
+    
+    const results = filesToRead.map(f => {
+      const fullPath = path.join(basePath, f.path);
+      let content = "";
+      if (fs.existsSync(fullPath)) {
+        content = fs.readFileSync(fullPath, "utf-8");
+      }
+      return {
+        name: f.name,
+        path: f.path,
+        content: content
+      };
+    });
+    
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
