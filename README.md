@@ -1,4 +1,6 @@
 # Roblox AI Assistant 🤖🎮
+Author : David Windšedl 
+
 
 [Česká verze níže / Czech version below]
 
