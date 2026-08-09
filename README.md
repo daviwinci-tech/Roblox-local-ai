@@ -1,8 +1,4 @@
-<img width="1919" height="962" alt="screen" src="https://github.com/user-attachments/assets/c4f46b33-2ed7-4cce-b8e5-63da34fec79d" />
-
 # Roblox AI Assistant 🤖🎮
-Author : David Windšedl 
-
 
 [Česká verze níže / Czech version below]
 

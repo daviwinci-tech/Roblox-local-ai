@@ -416,30 +416,83 @@ export default function App() {
           <div className="border border-zinc-900 rounded-2xl overflow-hidden bg-zinc-900/10 grid grid-cols-1 md:grid-cols-4">
             
             {/* Boční výběr souborů */}
-            <div className="border-r border-zinc-900 p-4 space-y-1 md:col-span-1 bg-zinc-950/40">
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block px-2 mb-2">SOUBORY PLUGINU</span>
+            <div className="border-r border-zinc-900 p-4 space-y-4 md:col-span-1 bg-zinc-950/40">
               {loadingFiles ? (
                 <div className="text-sm text-zinc-500 p-2">Načítání seznamu...</div>
               ) : (
-                projectFiles.map((file) => (
-                  <button
-                    key={file.name}
-                    onClick={() => setSelectedFile(file)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono transition-all flex items-center gap-2 border cursor-pointer ${
-                      selectedFile?.name === file.name
-                        ? "bg-teal-500/10 border-teal-500/30 text-teal-400"
-                        : "bg-transparent border-transparent text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-                    }`}
-                  >
-                    <span className={file.name.endsWith(".py") ? "text-amber-500" : file.name.endsWith(".json") ? "text-purple-400" : "text-blue-400"}>
-                      📄
-                    </span>
-                    <div className="truncate">
-                      <span className="block font-medium">{file.name}</span>
-                      <span className="block text-[9px] text-zinc-600 truncate">{file.path}</span>
-                    </div>
-                  </button>
-                ))
+                <>
+                  {/* Kategorie 1: Roblox Plugin */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-teal-500 uppercase tracking-wider block px-2 mb-1.5">Roblox Plugin (Luau)</span>
+                    {projectFiles
+                      .filter((f) => f.name.endsWith(".lua"))
+                      .map((file) => (
+                        <button
+                          key={file.name}
+                          onClick={() => setSelectedFile(file)}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 border cursor-pointer ${
+                            selectedFile?.name === file.name
+                              ? "bg-teal-500/10 border-teal-500/20 text-teal-400"
+                              : "bg-transparent border-transparent text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200"
+                          }`}
+                        >
+                          <span className="text-cyan-400 text-xs">🔹</span>
+                          <div className="truncate">
+                            <span className="block font-medium truncate">{file.name}</span>
+                            <span className="block text-[8px] text-zinc-600 truncate">{file.path}</span>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+
+                  {/* Kategorie 2: Python Backend */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-amber-500 uppercase tracking-wider block px-2 mb-1.5">Python Bridge Server</span>
+                    {projectFiles
+                      .filter((f) => f.name.endsWith(".py") || f.name === "requirements.txt")
+                      .map((file) => (
+                        <button
+                          key={file.name}
+                          onClick={() => setSelectedFile(file)}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 border cursor-pointer ${
+                            selectedFile?.name === file.name
+                              ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                              : "bg-transparent border-transparent text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200"
+                          }`}
+                        >
+                          <span className={file.name.endsWith(".py") ? "text-amber-500 text-xs" : "text-zinc-500 text-xs"}>🔸</span>
+                          <div className="truncate">
+                            <span className="block font-medium truncate">{file.name}</span>
+                            <span className="block text-[8px] text-zinc-600 truncate">{file.path}</span>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+
+                  {/* Kategorie 3: Konfigurace */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-purple-400 uppercase tracking-wider block px-2 mb-1.5">Projektové Konfigurace</span>
+                    {projectFiles
+                      .filter((f) => f.name === "default.project.json")
+                      .map((file) => (
+                        <button
+                          key={file.name}
+                          onClick={() => setSelectedFile(file)}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 border cursor-pointer ${
+                            selectedFile?.name === file.name
+                              ? "bg-purple-500/10 border-purple-500/20 text-purple-400"
+                              : "bg-transparent border-transparent text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200"
+                          }`}
+                        >
+                          <span className="text-purple-400 text-xs">⚙️</span>
+                          <div className="truncate">
+                            <span className="block font-medium truncate">{file.name}</span>
+                            <span className="block text-[8px] text-zinc-600 truncate">{file.path}</span>
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </>
               )}
             </div>
 

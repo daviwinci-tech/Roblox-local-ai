@@ -9,12 +9,16 @@ CORS(app)  # Povolení CORS pro případné externí webové nástroje
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 
+# Globální HTTP session pro reuse TCP spojení s Ollamou
+http_session = requests.Session()
+
 def load_config():
     default_config = {
         "ollama_base_url": "http://127.0.0.1:11434",
         "default_model": "qwen2.5-coder:14b",
         "host": "127.0.0.1",
-        "port": 5000
+        "port": 5000,
+        "max_history_messages": 10  # Ochrana před přetečením kontextového okna LLM
     }
     if not os.path.exists(CONFIG_PATH):
         try:
@@ -27,7 +31,12 @@ def load_config():
             
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            loaded = json.load(f)
+            # Doplňující klíče pokud chybí
+            for k, v in default_config.items():
+                if k not in loaded:
+                    loaded[k] = v
+            return loaded
     except Exception as e:
         print(f"Chyba při čtení config.json: {e}")
         return default_config
@@ -35,8 +44,26 @@ def load_config():
 config = load_config()
 
 def get_ollama_url(endpoint):
-    base_url = config.get("ollama_base_url", "http://127.0.0.1:11434").rstrip("/")
+    base_url = config.get("ollama_base_url", "http://127.0.0.1:11434").strip().rstrip("/")
+    if not base_url.startswith("http://") and not base_url.startswith("https://"):
+        base_url = f"http://{base_url}"
     return f"{base_url}{endpoint}"
+
+def truncate_messages(messages, max_count=10):
+    """
+    Zachová systémové zprávy na začátku a ponechá pouze posledních max_count zpráv,
+    aby nedošlo k přečerpání kontextového okna modelu a pádům na nedostatku paměti (OOM).
+    """
+    if not messages:
+        return []
+        
+    system_msgs = [m for m in messages if m.get("role") == "system"]
+    other_msgs = [m for m in messages if m.get("role") != "system"]
+    
+    if len(other_msgs) > max_count:
+        other_msgs = other_msgs[-max_count:]
+        
+    return system_msgs + other_msgs
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -49,7 +76,7 @@ def health():
     available_models = []
     
     try:
-        response = requests.get(ollama_url, timeout=5)
+        response = http_session.get(ollama_url, timeout=5)
         if response.status_code == 200:
             ollama_connected = True
             models_data = response.json()
@@ -79,6 +106,10 @@ def chat():
         if not messages:
             return jsonify({"error": "Nebyla poskytnuta žádná historie zpráv (messages)."}), 400
             
+        # Ořezání historie zpráv kvůli limitu kontextového okna
+        max_msgs = config.get("max_history_messages", 10)
+        messages = truncate_messages(messages, max_count=max_msgs)
+
         ollama_url = get_ollama_url("/api/chat")
         
         payload = {
@@ -92,7 +123,7 @@ def chat():
         }
         
         print(f"[Chat] Odesílám historii chat konverzace do Ollamy ({model})...")
-        response = requests.post(ollama_url, json=payload, timeout=90)
+        response = http_session.post(ollama_url, json=payload, timeout=90)
         
         if response.status_code != 200:
             return jsonify({
@@ -107,6 +138,11 @@ def chat():
             "response": ai_message
         })
         
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Timeout Ollama",
+            "response": "Časový limit vypršel. Model odpovídal příliš dlouho nebo je příliš vytížen."
+        }), 504
     except requests.exceptions.ConnectionError:
         return jsonify({
             "error": "Ollama offline",
@@ -139,7 +175,6 @@ def generate():
         
         ollama_url = get_ollama_url("/api/chat")
         
-        # Použijeme chat API pro lepší dodržení systémového promptu
         payload = {
             "model": model,
             "messages": [
@@ -154,7 +189,7 @@ def generate():
         }
         
         print(f"[Generate] Odesílám požadavek generování do Ollamy ({model})...")
-        response = requests.post(ollama_url, json=payload, timeout=90)
+        response = http_session.post(ollama_url, json=payload, timeout=90)
         
         if response.status_code != 200:
             return jsonify({
@@ -169,6 +204,11 @@ def generate():
             "response": ai_response
         })
         
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Timeout Ollama",
+            "response": "Generování kódu trvalo příliš dlouho. Zkuste menší model nebo jednodušší zadání."
+        }), 504
     except requests.exceptions.ConnectionError:
         return jsonify({
             "error": "Ollama offline",
@@ -215,7 +255,7 @@ def fix():
         }
         
         print(f"[Fix] Odesílám kód k opravě do Ollamy ({model})...")
-        response = requests.post(ollama_url, json=payload, timeout=90)
+        response = http_session.post(ollama_url, json=payload, timeout=90)
         
         if response.status_code != 200:
             return jsonify({
@@ -230,6 +270,11 @@ def fix():
             "response": ai_response
         })
         
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Timeout Ollama",
+            "response": "Časový limit pro opravu kódu vypršel."
+        }), 504
     except requests.exceptions.ConnectionError:
         return jsonify({
             "error": "Ollama offline",
@@ -276,7 +321,7 @@ def explain():
         }
         
         print(f"[Explain] Odesílám kód k vysvětlení do Ollamy ({model})...")
-        response = requests.post(ollama_url, json=payload, timeout=90)
+        response = http_session.post(ollama_url, json=payload, timeout=90)
         
         if response.status_code != 200:
             return jsonify({
@@ -291,6 +336,11 @@ def explain():
             "response": ai_response
         })
         
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Timeout Ollama",
+            "response": "Časový limit pro vysvětlení kódu vypršel."
+        }), 504
     except requests.exceptions.ConnectionError:
         return jsonify({
             "error": "Ollama offline",
@@ -311,4 +361,5 @@ if __name__ == "__main__":
     print(f"Ollama base URL: {config.get('ollama_base_url')}")
     print(f"Výchozí model: {config.get('default_model')}")
     print(f"==========================================")
-    app.run(host=host, port=port, debug=False)
+    app.run(host=host, port=port, debug=False, threaded=True)
+
