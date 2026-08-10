@@ -1,10 +1,15 @@
-# Roblox AI Assistant 🤖🎮
+# Roblox AI Local Agent 🤖🎮 (david.windsedl.cz)
+
+![Roblox AI Local Agent Preview](/src/assets/images/roblox_agent_preview_1786321753955.jpg)
 
 [Česká verze níže / Czech version below]
 
+> [!NOTE]
+> **Všechny zdrojové kódy, backend a soubory aplikace se nachází ve složce [`/Roblox-AI-Assistant`](./Roblox-AI-Assistant)**. / **All source code, agent engine, and backend files are located inside the [`/Roblox-AI-Assistant`](./Roblox-AI-Assistant) folder.**
+
 ### 🇺🇸 English Version
 
-Welcome to the **Roblox AI Assistant** repository!
+Welcome to the **Roblox AI Local Agent** repository!
 
 This project is a fully local and highly secure AI coding assistant integrated directly into **Roblox Studio** (2025+). It runs entirely offline, meaning **your game code never leaves your computer**. It uses **Ollama** on your local machine to run powerful LLM models (such as `qwen2.5-coder:14b`) and a lightweight **Python Flask backend** acting as a secure bridge.
 
