@@ -1,5 +1,3 @@
-<img width="1919" height="962" alt="image" src="https://github.com/user-attachments/assets/825fe543-52fe-4c04-8b11-cd234027fa0a" />
-
 # Roblox AI Assistant 🤖🎮
 
 [Česká verze níže / Czech version below]

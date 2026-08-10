@@ -32,6 +32,12 @@
         },
         "Settings": {
           "$path": "src/Settings.lua"
+        },
+        "Tools": {
+          "$path": "src/Tools.lua"
+        },
+        "Diff": {
+          "$path": "src/Diff.lua"
         }
       }
     }

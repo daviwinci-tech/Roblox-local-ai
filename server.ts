@@ -140,6 +140,8 @@ app.get("/api/project-files", async (req, res) => {
       { name: "Main.server.lua", path: "src/Main.server.lua" },
       { name: "UI.lua", path: "src/UI.lua" },
       { name: "Api.lua", path: "src/Api.lua" },
+      { name: "Tools.lua", path: "src/Tools.lua" },
+      { name: "Diff.lua", path: "src/Diff.lua" },
       { name: "Explain.lua", path: "src/Explain.lua" },
       { name: "Fix.lua", path: "src/Fix.lua" },
       { name: "Insert.lua", path: "src/Insert.lua" },
@@ -147,6 +149,11 @@ app.get("/api/project-files", async (req, res) => {
       { name: "Theme.lua", path: "src/Theme.lua" },
       { name: "Widgets.lua", path: "src/Widgets.lua" },
       { name: "app.py", path: "backend/app.py" },
+      { name: "config.py", path: "backend/config.py" },
+      { name: "agent_state.py", path: "backend/agent/state.py" },
+      { name: "agent_tools.py", path: "backend/agent/tools.py" },
+      { name: "agent_planner.py", path: "backend/agent/planner.py" },
+      { name: "agent_engine.py", path: "backend/agent/agent.py" },
       { name: "requirements.txt", path: "requirements.txt" },
       { name: "default.project.json", path: "default.project.json" }
     ];

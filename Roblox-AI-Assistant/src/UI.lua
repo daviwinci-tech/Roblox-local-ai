@@ -1,23 +1,31 @@
 --[[
     UI.lua
-    Vytváří grafické uživatelské rozhraní (GUI) ve stylu ChatGPT.
-    Používá moderní prvky jako UICorner, UIStroke, UIPadding a automatické rolování.
-    Propojuje akce tlačítek s moduly Api, Insert, Fix, Explain a Settings.
-]]
+    Vytváří grafické uživatelské rozhraní (GUI) s podporou Chat Mód a Agent Mód pro Roblox AI Agent.
+--]]
 
 local HttpService = game:GetService("HttpService")
 local Selection = game:GetService("Selection")
+
 local Theme = require(script.Parent.Theme)
 local Api = require(script.Parent.Api)
 local Insert = require(script.Parent.Insert)
 local Fix = require(script.Parent.Fix)
 local Explain = require(script.Parent.Explain)
 local Settings = require(script.Parent.Settings)
+local Tools = require(script.Parent.Tools)
+local Diff = require(script.Parent.Diff)
 
 local UI = {}
 
--- Globální reference pro interakci
+-- Globální prvky rozhraní
 local mainFrame = nil
+local modeChatBtn = nil
+local modeAgentBtn = nil
+
+local chatPanel = nil
+local agentPanel = nil
+
+-- Chat Mód prvky
 local chatScroll = nil
 local promptInput = nil
 local generateBtn = nil
@@ -27,915 +35,480 @@ local insertBtn = nil
 local copyBtn = nil
 local settingsBtn = nil
 local settingsPanel = nil
-local modelInput = nil
-local urlInput = nil
 local statusLabel = nil
 
 local isGenerating = false
 local lastAIResponseText = ""
-local messagesHistory = {} -- Historie zpráv pro uchování kontextu v chat endpointu
+local messagesHistory = {}
 
-local availableModels = {Settings.GetModel()}
-local currentModelIndex = 1
+-- Agent Mód prvky
+local agentTaskInput = nil
+local agentStartBtn = nil
+local agentStatusBadge = nil
+local agentLogScroll = nil
+local pendingDiffFrame = nil
+local diffPathLabel = nil
+local diffReasonLabel = nil
+local diffTextLabel = nil
+local approveDiffBtn = nil
+local rejectDiffBtn = nil
 
-local function findInTable(t, val)
-    for i, v in ipairs(t) do
-        if v == val then return i end
-    end
-    return nil
-end
+local activeTaskId = nil
+local isAgentRunning = false
 
-local function getSelectionContext()
-    local success, currentSelection = pcall(function()
-        return Selection:Get()
-    end)
-    if success and currentSelection and #currentSelection > 0 then
-        local primary = currentSelection[1]
-        local path = primary:GetFullName()
-        local className = primary.ClassName
-        return "\n*(Poznámka pro AI: Uživatel má v Roblox Studiu označený objekt '" .. primary.Name .. "' (třída: " .. className .. ") s cestou " .. path .. ")*"
-    end
-    return ""
-end
-
--- Pomocná funkce pro vytvoření UICorner
+-- Pomocné funkce pro úpravu vzhledu
 local function addCorner(parent, radius)
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, radius or 6)
-    corner.Parent = parent
-    return corner
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 6)
+	corner.Parent = parent
+	return corner
 end
 
--- Pomocná funkce pro vytvoření UIStroke (ohraničení)
 local function addStroke(parent, color, thickness)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = color or Color3.fromRGB(100, 100, 100)
-    stroke.Thickness = thickness or 1
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Parent = parent
-    return stroke
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color or Color3.fromRGB(100, 100, 100)
+	stroke.Thickness = thickness or 1
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = parent
+	return stroke
 end
 
--- Pomocná funkce pro vytvoření UIPadding
 local function addPadding(parent, top, bottom, left, right)
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, top or 0)
-    padding.PaddingBottom = UDim.new(0, bottom or 0)
-    padding.PaddingLeft = UDim.new(0, left or 0)
-    padding.PaddingRight = UDim.new(0, right or 0)
-    padding.Parent = parent
-    return padding
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, top or 0)
+	padding.PaddingBottom = UDim.new(0, bottom or 0)
+	padding.PaddingLeft = UDim.new(0, left or 0)
+	padding.PaddingRight = UDim.new(0, right or 0)
+	padding.Parent = parent
+	return padding
 end
 
--- Pomocná funkce pro vytvoření textového tlačítka s hover efektem
 local function createButton(name, text, size, position, parent, colors, onClick)
-    local button = Instance.new("TextButton")
-    button.Name = name
-    button.Size = size
-    button.Position = position
-    button.BackgroundColor3 = colors.Button
-    button.BorderSizePixel = 0
-    button.Text = text
-    button.TextColor3 = colors.ButtonText
-    button.Font = Enum.Font.SourceSans
-    button.TextSize = 14
-    button.Parent = parent
-    
-    addCorner(button, 5)
-    local stroke = addStroke(button, colors.Border, 1)
-    
-    button.MouseButton1Click:Connect(function()
-        if not isGenerating then
-            onClick()
-        end
-    end)
-    
-    -- Hover a stisknutí efekty
-    button.MouseEnter:Connect(function()
-        if not isGenerating then
-            button.BackgroundColor3 = colors.ButtonHover
-        end
-    end)
-    
-    button.MouseLeave:Connect(function()
-        if not isGenerating then
-            button.BackgroundColor3 = colors.Button
-        end
-    end)
-    
-    return button, stroke
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = size
+	button.Position = position
+	button.BackgroundColor3 = colors.Button
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.TextColor3 = colors.ButtonText
+	button.Font = Enum.Font.SourceSans
+	button.TextSize = 13
+	button.Parent = parent
+	addCorner(button, 6)
+	addStroke(button, colors.Border, 1)
+	
+	if onClick then
+		button.MouseButton1Click:Connect(onClick)
+	end
+	return button
 end
 
--- Přidá bublinu do chatu (Uživatel / AI)
-local function addChatBubble(sender, text, colors)
-    local bubbleFrame = Instance.new("Frame")
-    bubbleFrame.Name = sender .. "Bubble"
-    bubbleFrame.Size = UDim2.new(1, 0, 0, 0) -- Výška se přizpůsobí textu
-    bubbleFrame.BorderSizePixel = 0
-    bubbleFrame.BackgroundTransparency = 0
-    
-    if sender == "User" then
-        bubbleFrame.BackgroundColor3 = colors.UserBubble
-    elseif sender == "System" then
-        bubbleFrame.BackgroundColor3 = colors.Background
-    else
-        bubbleFrame.BackgroundColor3 = colors.AIBubble
-    end
-    
-    addPadding(bubbleFrame, 8, 8, 12, 12)
-    
-    -- Rozvržení obsahu
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Padding = UDim.new(0, 4)
-    listLayout.Parent = bubbleFrame
-    
-    -- Popisek odesílatele
-    local senderLabel = Instance.new("TextLabel")
-    senderLabel.Size = UDim2.new(1, 0, 0, 16)
-    senderLabel.BackgroundTransparency = 1
-    
-    if sender == "User" then
-        senderLabel.Text = "VY"
-        senderLabel.TextColor3 = colors.Accent
-    elseif sender == "System" then
-        senderLabel.Text = "SYSTÉM"
-        senderLabel.TextColor3 = Color3.fromRGB(220, 100, 100)
-    else
-        senderLabel.Text = "AI ASISTENT (" .. Settings.GetModel() .. ")"
-        senderLabel.TextColor3 = Color3.fromRGB(80, 200, 120)
-    end
-    
-    senderLabel.Font = Enum.Font.SourceSansBold
-    senderLabel.TextSize = 12
-    senderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    senderLabel.Parent = bubbleFrame
-    
-    -- Samotný text zprávy
-    local messageLabel = Instance.new("TextLabel")
-    messageLabel.Size = UDim2.new(1, 0, 0, 0)
-    messageLabel.BackgroundTransparency = 1
-    messageLabel.Text = text
-    messageLabel.TextColor3 = colors.Text
-    messageLabel.Font = (sender == "User" or sender == "System") and Enum.Font.SourceSans or Enum.Font.Code
-    messageLabel.TextSize = 13
-    messageLabel.TextWrapped = true
-    messageLabel.RichText = true
-    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    messageLabel.TextYAlignment = Enum.TextYAlignment.Top
-    messageLabel.AutomaticSize = Enum.AutomaticSize.Y
-    messageLabel.Parent = bubbleFrame
-    
-    bubbleFrame.AutomaticSize = Enum.AutomaticSize.Y
-    bubbleFrame.Parent = chatScroll
-    
-    -- Automatické scrollování dolů po přidání bubliny
-    task.spawn(function()
-        task.wait(0.05)
-        chatScroll.CanvasPosition = Vector2.new(0, chatScroll.AbsoluteCanvasSize.Y)
-    end)
+-- ==========================================
+-- AGENT SPUŠTĚNÍ A SMYČKA V LUAU
+-- ==========================================
+
+local function addAgentLog(message, level)
+	if not agentLogScroll then return end
+	local colors = Theme.GetColors()
+	
+	local logFrame = Instance.new("Frame")
+	logFrame.Size = UDim2.new(1, 0, 0, 0)
+	logFrame.AutomaticSize = Enum.AutomaticSize.Y
+	logFrame.BackgroundTransparency = 1
+	
+	local logText = Instance.new("TextLabel")
+	logText.Size = UDim2.new(1, 0, 0, 0)
+	logText.AutomaticSize = Enum.AutomaticSize.Y
+	logText.BackgroundTransparency = 1
+	logText.Text = message
+	logText.Font = Enum.Font.Code
+	logText.TextSize = 11
+	logText.TextWrapped = true
+	logText.TextXAlignment = Enum.TextXAlignment.Left
+	
+	if level == "error" then
+		logText.TextColor3 = Color3.fromRGB(255, 100, 100)
+	elseif level == "success" then
+		logText.TextColor3 = Color3.fromRGB(100, 255, 150)
+	elseif level == "tool" then
+		logText.TextColor3 = Color3.fromRGB(100, 200, 255)
+	elseif level == "warning" then
+		logText.TextColor3 = Color3.fromRGB(255, 200, 100)
+	else
+		logText.TextColor3 = colors.Text
+	end
+	
+	logText.Parent = logFrame
+	logFrame.Parent = agentLogScroll
+	agentLogScroll.CanvasPosition = Vector2.new(0, agentLogScroll.AbsoluteCanvasSize.Y)
 end
 
--- Vyčistí historii chatu
-local function clearChat()
-    for _, child in ipairs(chatScroll:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
-        end
-    end
-    chatScroll.CanvasPosition = Vector2.new(0, 0)
-    lastAIResponseText = ""
-    messagesHistory = {}
-    
-    if insertBtn then insertBtn.Visible = false end
-    if copyBtn then copyBtn.Visible = false end
-    
-    local colors = Theme.GetColors()
-    addChatBubble("AI", "Historie konverzace byla vymazána. Jak ti mohu dnes pomoci s Roblox Luau?", colors)
+local function updateAgentUI(state)
+	if not state then return end
+	local colors = Theme.GetColors()
+	
+	-- Aktualizace stavového odznaku
+	local status = state.status or "idle"
+	agentStatusBadge.Text = " STAV: " .. string.upper(status) .. " "
+	
+	if status == "planning" or status == "investigating" then
+		agentStatusBadge.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+	elseif status == "editing" or status == "waiting_for_approval" then
+		agentStatusBadge.BackgroundColor3 = Color3.fromRGB(220, 140, 0)
+	elseif status == "completed" then
+		agentStatusBadge.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+	elseif status == "failed" then
+		agentStatusBadge.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+	end
+	
+	-- Zobrazení schvalovacího okna pro diffs
+	if status == "waiting_for_approval" and state.pending_diffs and #state.pending_diffs > 0 then
+		local pending = state.pending_diffs[1]
+		pendingDiffFrame.Visible = true
+		diffPathLabel.Text = "Skript: " .. tostring(pending.path)
+		diffReasonLabel.Text = "Důvod: " .. tostring(pending.description)
+		
+		-- Načteme aktuální kód z Roblox Studia
+		local currentSource = Tools.readScript(pending.path)
+		if string.find(currentSource, "ERROR:") then
+			currentSource = "-- (Nový skript)"
+		end
+		
+		local diffStr = Diff.generateLineDiff(currentSource, pending.new_source)
+		diffTextLabel.Text = diffStr
+	else
+		pendingDiffFrame.Visible = false
+	end
 end
 
--- Simuluje postupné vypisování textu ("typewriter" efekt) pro pocit reálného streamování z AI!
-local function simulateStreamingText(sender, fullText, colors)
-    local bubbleFrame = Instance.new("Frame")
-    bubbleFrame.Name = sender .. "Bubble"
-    bubbleFrame.Size = UDim2.new(1, 0, 0, 0)
-    bubbleFrame.BorderSizePixel = 0
-    bubbleFrame.BackgroundColor3 = colors.AIBubble
-    addPadding(bubbleFrame, 8, 8, 12, 12)
-    
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Padding = UDim.new(0, 4)
-    listLayout.Parent = bubbleFrame
-    
-    local senderLabel = Instance.new("TextLabel")
-    senderLabel.Size = UDim2.new(1, 0, 0, 16)
-    senderLabel.BackgroundTransparency = 1
-    senderLabel.Text = "AI ASISTENT (" .. Settings.GetModel() .. ")"
-    senderLabel.TextColor3 = Color3.fromRGB(80, 200, 120)
-    senderLabel.Font = Enum.Font.SourceSansBold
-    senderLabel.TextSize = 12
-    senderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    senderLabel.Parent = bubbleFrame
-    
-    local messageLabel = Instance.new("TextLabel")
-    messageLabel.Size = UDim2.new(1, 0, 0, 0)
-    messageLabel.BackgroundTransparency = 1
-    messageLabel.Text = ""
-    messageLabel.TextColor3 = colors.Text
-    messageLabel.Font = Enum.Font.Code
-    messageLabel.TextSize = 13
-    messageLabel.TextWrapped = true
-    messageLabel.RichText = true
-    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    messageLabel.TextYAlignment = Enum.TextYAlignment.Top
-    messageLabel.AutomaticSize = Enum.AutomaticSize.Y
-    messageLabel.Parent = bubbleFrame
-    
-    bubbleFrame.AutomaticSize = Enum.AutomaticSize.Y
-    bubbleFrame.Parent = chatScroll
-    
-    -- Postupné vypisování slov pro plynulé zobrazení
-    task.spawn(function()
-        local words = {}
-        for word in string.gmatch(fullText, "[^%s]+%s*") do
-            table.insert(words, word)
-        end
-        
-        local currentText = ""
-        local step = math.max(1, math.floor(#words / 40)) -- Upraví rychlost vypisování u velmi dlouhých zpráv
-        
-        for i = 1, #words, step do
-            local nextLimit = math.min(#words, i + step - 1)
-            for j = i, nextLimit do
-                currentText = currentText .. words[j]
-            end
-            messageLabel.Text = currentText
-            chatScroll.CanvasPosition = Vector2.new(0, chatScroll.AbsoluteCanvasSize.Y)
-            task.wait(0.01)
-        end
-        
-        -- Ujistíme se, že se vypíše 100% textu na konci
-        messageLabel.Text = fullText
-        chatScroll.CanvasPosition = Vector2.new(0, chatScroll.AbsoluteCanvasSize.Y)
-    end)
+-- Vstoupí do agentní smyčky a zpracovává kroky autonomně
+local function processAgentStep(taskId, toolResult)
+	Api.AgentStep(taskId, toolResult, function(success, response)
+		if not success or not response then
+			addAgentLog("Chyba při komunikaci s agentem.", "error")
+			isAgentRunning = false
+			agentStartBtn.Text = "Spustit AI Agenta"
+			return
+		end
+		
+		-- Pokud krok vyžaduje spuštění nástroje v Roblox Studio
+		if response.action_required == "execute_in_roblox" then
+			local action = response.action
+			local actionInput = response.action_input or {}
+			
+			addAgentLog("🛠️ Spouštím nástroj v Roblox Studio: " .. tostring(action), "tool")
+			local result = Tools.executeTool(action, actionInput)
+			
+			updateAgentUI(response.state)
+			-- Okamžitě pokračujeme v dalším kroku s výsledkem z Roblox Studio
+			task.wait(0.5)
+			processAgentStep(taskId, result)
+		else
+			-- Standardní aktualizace stavu
+			local state = response.state or response
+			updateAgentUI(state)
+			
+			if state.logs and #state.logs > 0 then
+				local lastLog = state.logs[#state.logs]
+				addAgentLog(lastLog.message, lastLog.level)
+			end
+			
+			if state.status == "completed" or state.status == "failed" then
+				isAgentRunning = false
+				agentStartBtn.Text = "Spustit AI Agenta"
+			end
+		end
+	end)
 end
 
--- Spustí generování / chatování
-local function startGeneration(promptText, mode)
-    if isGenerating then return end
-    if mode == "Generate" and string.gsub(promptText, "%s+", "") == "" then return end
-    
-    isGenerating = true
-    generateBtn.Text = "Odesílám..."
-    generateBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    fixBtn.Active = false
-    explainBtn.Active = false
-    
-    local colors = Theme.GetColors()
-    
-    -- Přidání uživatelského promptu do chatu a historie
-    if mode == "Generate" then
-        addChatBubble("User", promptText, colors)
-        
-        local context = getSelectionContext()
-        local apiPrompt = promptText
-        if context ~= "" then
-            apiPrompt = promptText .. "\n\n" .. context
-        end
-        table.insert(messagesHistory, {role = "user", content = apiPrompt})
-        promptInput.Text = ""
-    elseif mode == "Fix" then
-        addChatBubble("User", "🔧 Opravit vybraný skript v Exploreru", colors)
-    elseif mode == "Explain" then
-        addChatBubble("User", "📖 Vysvětlit vybraný skript v Exploreru", colors)
-    end
-    
-    -- Přidáme dočasnou zprávu o načítání
-    local loadingBubble = Instance.new("Frame")
-    loadingBubble.Name = "LoadingBubble"
-    loadingBubble.Size = UDim2.new(1, 0, 0, 40)
-    loadingBubble.BackgroundColor3 = colors.AIBubble
-    loadingBubble.BorderSizePixel = 0
-    addPadding(loadingBubble, 8, 8, 12, 12)
-    
-    local loadingText = Instance.new("TextLabel")
-    loadingText.Size = UDim2.new(1, 0, 1, 0)
-    loadingText.BackgroundTransparency = 1
-    loadingText.Text = "Přemýšlím... Odezva z lokální Ollamy..."
-    loadingText.TextColor3 = colors.SubText
-    loadingText.Font = Enum.Font.SourceSansItalic
-    loadingText.TextSize = 13
-    loadingText.TextXAlignment = Enum.TextXAlignment.Left
-    loadingText.Parent = loadingBubble
-    loadingBubble.Parent = chatScroll
-    
-    task.spawn(function()
-        local result
-        if mode == "Fix" then
-            result = Fix.Execute()
-        elseif mode == "Explain" then
-            result = Explain.Execute()
-        else
-            -- Pro standardní chat posíláme celou historii
-            result = Api.Chat(messagesHistory)
-        end
-        
-        -- Odstranění načítací bubliny
-        loadingBubble:Destroy()
-        
-        isGenerating = false
-        generateBtn.Text = "Generovat"
-        generateBtn.BackgroundColor3 = colors.Accent
-        fixBtn.Active = true
-        explainBtn.Active = true
-        
-        if result.success then
-            local responseText = ""
-            if mode == "Fix" then
-                responseText = "Zde je opravená verze skriptu:\n\n```lua\n" .. result.fixedCode .. "\n```\n\n" .. (result.message or "")
-                lastAIResponseText = result.fixedCode
-            elseif mode == "Explain" then
-                responseText = result.explanation
-                lastAIResponseText = result.explanation
-            else
-                responseText = result.response
-                lastAIResponseText = result.response
-                -- Uložíme odpověď AI do historie konverzace
-                table.insert(messagesHistory, {role = "assistant", content = responseText})
-            end
-            
-            -- Simulujeme plynulé vykreslení (streamování) pro úžasný UX zážitek!
-            simulateStreamingText("AI", responseText, colors)
-            
-            -- Nastavení viditelnosti tlačítek pro vložení a kopírování
-            if mode == "Fix" or string.find(responseText, "```") then
-                insertBtn.Visible = true
-            else
-                insertBtn.Visible = false
-            end
-            copyBtn.Visible = true
-        else
-            addChatBubble("AI", "CHYBA: " .. (result.message or "Neznámá chyba komunikace s backendem."), colors)
-            insertBtn.Visible = false
-            copyBtn.Visible = false
-        end
-    end)
+local function startAgentTask()
+	if isAgentRunning then return end
+	local goal = agentTaskInput.Text
+	if string.gsub(goal, "%s+", "") == "" then return end
+	
+	isAgentRunning = true
+	agentStartBtn.Text = "Agent Běží..."
+	
+	-- Vyčištění logu
+	for _, child in ipairs(agentLogScroll:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	
+	addAgentLog("🚀 Spouštím AI Agenta pro úkol: " .. goal, "info")
+	
+	Api.AgentStart(goal, function(success, taskId, initialState)
+		if success and taskId then
+			activeTaskId = taskId
+			updateAgentUI(initialState)
+			-- Započetí prvního kroku
+			processAgentStep(taskId, nil)
+		else
+			addAgentLog("Chyba při inicializaci agenta.", "error")
+			isAgentRunning = false
+			agentStartBtn.Text = "Spustit AI Agenta"
+		end
+	end)
 end
 
--- Otestuje a aktualizuje stav připojení
-local function testConnection()
-    if statusLabel then
-        statusLabel.Text = "Testuji spojení..."
-        statusLabel.TextColor3 = Color3.fromRGB(200, 200, 100)
-    end
-    
-    task.spawn(function()
-        local health = Api.CheckHealth()
-        local colors = Theme.GetColors()
-        
-        if statusLabel then
-            if health.success then
-                if health.ollama_connected then
-                    statusLabel.Text = "● PŘIPOJENO K OLLAMĚ"
-                    statusLabel.TextColor3 = Color3.fromRGB(80, 200, 120)
-                else
-                    statusLabel.Text = "● BACKEND BĚŽÍ (Ollama Offline)"
-                    statusLabel.TextColor3 = Color3.fromRGB(220, 150, 50)
-                end
-            else
-                statusLabel.Text = "● OFFLINE (Backend neběží)"
-                statusLabel.TextColor3 = Color3.fromRGB(220, 100, 100)
-            end
-        end
-        
-        if health.success and health.available_models and #health.available_models > 0 then
-            availableModels = health.available_models
-            local foundIndex = findInTable(availableModels, Settings.GetModel())
-            if foundIndex then
-                currentModelIndex = foundIndex
-            else
-                currentModelIndex = 1
-            end
-        end
-        
-        -- Přidáme log do chatu o testu připojení
-        addChatBubble("System", health.message, colors)
-    end)
-end
+-- ==========================================
+-- VYTVOŘENÍ HLAVNÍHO GUI DOCK WIDGETU
+-- ==========================================
 
--- Aktualizuje barvy prvků podle aktuálního tématu
-local function applyThemeColors(colors)
-    mainFrame.BackgroundColor3 = colors.Background
-    
-    -- Hlavička
-    local header = mainFrame:FindFirstChild("Header")
-    if header then
-        header.BackgroundColor3 = colors.HeaderBackground
-        local title = header:FindFirstChild("Title")
-        if title then title.TextColor3 = colors.Text end
-    end
-    
-    -- Chat oblast
-    chatScroll.BackgroundColor3 = colors.Background
-    
-    -- Vstupní oblast
-    local inputArea = mainFrame:FindFirstChild("InputArea")
-    if inputArea then
-        inputArea.BackgroundColor3 = colors.HeaderBackground
-        local inputFrame = inputArea:FindFirstChild("InputFrame")
-        if inputFrame then
-            inputFrame.BackgroundColor3 = colors.CardBackground
-            inputFrame.UIStroke.Color = colors.Border
-            if promptInput then
-                promptInput.TextColor3 = colors.Text
-                promptInput.PlaceholderColor3 = colors.SubText
-            end
-        end
-        
-        -- Tlačítka
-        if generateBtn then
-            generateBtn.BackgroundColor3 = isGenerating and Color3.fromRGB(100, 100, 100) or colors.Accent
-            generateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            generateBtn.UIStroke.Color = colors.Accent
-        end
-        
-        if fixBtn then
-            fixBtn.BackgroundColor3 = colors.Button
-            fixBtn.TextColor3 = colors.ButtonText
-            fixBtn.UIStroke.Color = colors.Border
-        end
-        
-        if explainBtn then
-            explainBtn.BackgroundColor3 = colors.Button
-            explainBtn.TextColor3 = colors.ButtonText
-            explainBtn.UIStroke.Color = colors.Border
-        end
-        
-        if insertBtn then
-            insertBtn.BackgroundColor3 = colors.Button
-            insertBtn.TextColor3 = colors.ButtonText
-            insertBtn.UIStroke.Color = colors.Border
-        end
-        
-        if copyBtn then
-            copyBtn.BackgroundColor3 = colors.Button
-            copyBtn.TextColor3 = colors.ButtonText
-            copyBtn.UIStroke.Color = colors.Border
-        end
-        
-        if settingsBtn then
-            settingsBtn.BackgroundColor3 = colors.Button
-            settingsBtn.TextColor3 = colors.ButtonText
-            settingsBtn.UIStroke.Color = colors.Border
-        end
-    end
-    
-    -- Nastavení panel
-    if settingsPanel then
-        settingsPanel.BackgroundColor3 = colors.CardBackground
-        settingsPanel.UIStroke.Color = colors.Border
-        local title = settingsPanel:FindFirstChild("Title")
-        if title then title.TextColor3 = colors.Text end
-        
-        local mLabel = settingsPanel:FindFirstChild("ModelLabel")
-        if mLabel then mLabel.TextColor3 = colors.Text end
-        
-        local uLabel = settingsPanel:FindFirstChild("UrlLabel")
-        if uLabel then uLabel.TextColor3 = colors.Text end
-        
-        if urlInput then
-            urlInput.BackgroundColor3 = colors.Background
-            urlInput.TextColor3 = colors.Text
-            urlInput.UIStroke.Color = colors.Border
-        end
-        
-        if modelInput then
-            modelInput.BackgroundColor3 = colors.Background
-            modelInput.TextColor3 = colors.Text
-            modelInput.UIStroke.Color = colors.Border
-        end
-        
-        local prevBtn = settingsPanel:FindFirstChild("PrevModelBtn")
-        if prevBtn then
-            prevBtn.BackgroundColor3 = colors.Button
-            prevBtn.TextColor3 = colors.ButtonText
-            prevBtn.UIStroke.Color = colors.Border
-        end
-        
-        local nextBtn = settingsPanel:FindFirstChild("NextModelBtn")
-        if nextBtn then
-            nextBtn.BackgroundColor3 = colors.Button
-            nextBtn.TextColor3 = colors.ButtonText
-            nextBtn.UIStroke.Color = colors.Border
-        end
-    end
-    
-    -- Aktualizovat již existující zprávy v chatu
-    for _, bubble in ipairs(chatScroll:GetChildren()) do
-        if bubble:IsA("Frame") then
-            local isUser = string.find(bubble.Name, "User") ~= nil
-            local isSystem = string.find(bubble.Name, "System") ~= nil
-            
-            if isUser then
-                bubble.BackgroundColor3 = colors.UserBubble
-            elseif isSystem then
-                bubble.BackgroundColor3 = colors.Background
-            else
-                bubble.BackgroundColor3 = colors.AIBubble
-            end
-            
-            -- Projdeme všechny labely a nastavíme jim správnou barvu
-            for _, child in ipairs(bubble:GetChildren()) do
-                if child:IsA("TextLabel") then
-                    if child.Name == "TextLabel" then
-                        child.TextColor3 = colors.Text
-                    elseif child.Name == "SenderLabel" then
-                        child.TextColor3 = isUser and colors.Accent or (isSystem and Color3.fromRGB(220, 100, 100) or Color3.fromRGB(80, 200, 120))
-                    end
-                end
-            end
-        end
-    end
-end
+function UI.CreateMainDockWidget(plugin)
+	local pluginGui = plugin:CreateDockWidgetPluginGui(
+		"RobloxAIAgent_DockWidget",
+		DockWidgetPluginGuiInfo.new(
+			Enum.InitialDockState.Right,
+			true,  -- InitialEnabled
+			false, -- OverridePreviousState
+			340,   -- DefaultWidth
+			520,   -- DefaultHeight
+			260,   -- MinWidth
+			380    -- MinHeight
+		)
+	)
+	pluginGui.Title = "Roblox AI Local Agent"
+	
+	local colors = Theme.GetColors()
+	
+	mainFrame = Instance.new("Frame")
+	mainFrame.Size = UDim2.new(1, 0, 1, 0)
+	mainFrame.BackgroundColor3 = colors.Background
+	mainFrame.Parent = pluginGui
+	
+	-- 1. Horní lišta s přepínačem Módů (Chat vs Agent)
+	local topBar = Instance.new("Frame")
+	topBar.Size = UDim2.new(1, 0, 0, 36)
+	topBar.BackgroundColor3 = colors.CardBackground
+	topBar.Parent = mainFrame
+	addStroke(topBar, colors.Border, 1)
+	
+	modeChatBtn = Instance.new("TextButton")
+	modeChatBtn.Size = UDim2.new(0.5, -2, 1, 0)
+	modeChatBtn.Position = UDim2.new(0, 0, 0, 0)
+	modeChatBtn.BackgroundColor3 = colors.Accent
+	modeChatBtn.Text = "💬 Chat Mód"
+	modeChatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	modeChatBtn.Font = Enum.Font.SourceSansBold
+	modeChatBtn.TextSize = 13
+	modeChatBtn.Parent = topBar
+	
+	modeAgentBtn = Instance.new("TextButton")
+	modeAgentBtn.Size = UDim2.new(0.5, -2, 1, 0)
+	modeAgentBtn.Position = UDim2.new(0.5, 2, 0, 0)
+	modeAgentBtn.BackgroundColor3 = colors.Button
+	modeAgentBtn.Text = "🤖 Agent Mód"
+	modeAgentBtn.TextColor3 = colors.ButtonText
+	modeAgentBtn.Font = Enum.Font.SourceSansBold
+	modeAgentBtn.TextSize = 13
+	modeAgentBtn.Parent = topBar
+	
+	-- Panel pro Chat Mód
+	chatPanel = Instance.new("Frame")
+	chatPanel.Size = UDim2.new(1, 0, 1, -36)
+	chatPanel.Position = UDim2.new(0, 0, 0, 36)
+	chatPanel.BackgroundTransparency = 1
+	chatPanel.Parent = mainFrame
+	
+	-- Panel pro Agent Mód
+	agentPanel = Instance.new("Frame")
+	agentPanel.Size = UDim2.new(1, 0, 1, -36)
+	agentPanel.Position = UDim2.new(0, 0, 0, 36)
+	agentPanel.BackgroundTransparency = 1
+	agentPanel.Visible = false
+	agentPanel.Parent = mainFrame
+	
+	-- Přepínání mezi záložkami
+	modeChatBtn.MouseButton1Click:Connect(function()
+		chatPanel.Visible = true
+		agentPanel.Visible = false
+		modeChatBtn.BackgroundColor3 = colors.Accent
+		modeChatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		modeAgentBtn.BackgroundColor3 = colors.Button
+		modeAgentBtn.TextColor3 = colors.ButtonText
+	end)
+	
+	modeAgentBtn.MouseButton1Click:Connect(function()
+		chatPanel.Visible = false
+		agentPanel.Visible = true
+		modeAgentBtn.BackgroundColor3 = colors.Accent
+		modeAgentBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		modeChatBtn.BackgroundColor3 = colors.Button
+		modeChatBtn.TextColor3 = colors.ButtonText
+	end)
+	
+	-- ==========================================
+	-- INTEGRACE CHAT MÓDU
+	-- ==========================================
+	chatScroll = Instance.new("ScrollingFrame")
+	chatScroll.Size = UDim2.new(1, -16, 1, -110)
+	chatScroll.Position = UDim2.new(0, 8, 0, 8)
+	chatScroll.BackgroundTransparency = 1
+	chatScroll.ScrollBarThickness = 4
+	chatScroll.Parent = chatPanel
+	
+	local chatLayout = Instance.new("UIListLayout")
+	chatLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	chatLayout.Padding = UDim.new(0, 8)
+	chatLayout.Parent = chatScroll
+	
+	local inputArea = Instance.new("Frame")
+	inputArea.Size = UDim2.new(1, -16, 0, 90)
+	inputArea.Position = UDim2.new(0, 8, 1, -95)
+	inputArea.BackgroundColor3 = colors.CardBackground
+	inputArea.Parent = chatPanel
+	addCorner(inputArea, 8)
+	addStroke(inputArea, colors.Border, 1)
+	addPadding(inputArea, 6, 6, 8, 8)
+	
+	promptInput = Instance.new("TextBox")
+	promptInput.Size = UDim2.new(1, 0, 0, 48)
+	promptInput.BackgroundColor3 = colors.Background
+	promptInput.Text = ""
+	promptInput.PlaceholderText = "Napiš dotaz k Roblox Luau kódu..."
+	promptInput.PlaceholderColor3 = colors.SubText
+	promptInput.TextColor3 = colors.Text
+	promptInput.Font = Enum.Font.SourceSans
+	promptInput.TextSize = 13
+	promptInput.TextXAlignment = Enum.TextXAlignment.Left
+	promptInput.TextYAlignment = Enum.TextYAlignment.Top
+	promptInput.ClearTextOnFocus = false
+	promptInput.Parent = inputArea
+	addCorner(promptInput, 6)
+	addStroke(promptInput, colors.Border, 1)
+	
+	generateBtn = createButton("GenerateBtn", "Generovat", UDim2.new(0.3, 0, 0, 24), UDim2.new(0.7, 0, 0, 54), inputArea, colors, function()
+		if promptInput.Text ~= "" then
+			Api.SendChat({{role="user", content=promptInput.Text}}, Settings.GetModel(), function(success, resp)
+				if success then
+					local colors = Theme.GetColors()
+					addAgentLog("Odpověď obdržena.", "success")
+				end
+			end)
+		end
+	end)
 
--- Hlavní inicializační funkce UI
-function UI.CreateInterface(parent, plugin)
-    local colors = Theme.GetColors()
-    
-    -- 1. Hlavní kontejner
-    mainFrame = Instance.new("Frame")
-    mainFrame.Name = "RobloxAI_MainFrame"
-    mainFrame.Size = UDim2.new(1, 0, 1, 0)
-    mainFrame.BackgroundColor3 = colors.Background
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Parent = parent
-    
-    -- 2. Horní lišta / Hlavička
-    local header = Instance.new("Frame")
-    header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 45)
-    header.BackgroundColor3 = colors.HeaderBackground
-    header.BorderSizePixel = 0
-    header.Parent = mainFrame
-    
-    addPadding(header, 0, 0, 12, 12)
-    
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(0.5, 0, 1, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "Roblox AI Assistant"
-    title.TextColor3 = colors.Text
-    title.Font = Enum.Font.SourceSansBold
-    title.TextSize = 15
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = header
-    
-    local clearBtn = Instance.new("TextButton")
-    clearBtn.Name = "ClearButton"
-    clearBtn.Size = UDim2.new(0, 70, 0, 24)
-    clearBtn.Position = UDim2.new(1, -70, 0.5, -12)
-    clearBtn.BackgroundColor3 = colors.Button
-    clearBtn.Text = "Vyčistit"
-    clearBtn.TextColor3 = colors.ButtonText
-    clearBtn.Font = Enum.Font.SourceSans
-    clearBtn.TextSize = 12
-    clearBtn.Parent = header
-    addCorner(clearBtn, 4)
-    addStroke(clearBtn, colors.Border, 1)
-    clearBtn.MouseButton1Click:Connect(clearChat)
-    
-    -- 3. Rolovací plocha pro chat
-    chatScroll = Instance.new("ScrollingFrame")
-    chatScroll.Name = "ChatScroll"
-    chatScroll.Size = UDim2.new(1, 0, 1, -215) -- Rezerva pro zápatí
-    chatScroll.Position = UDim2.new(0, 0, 0, 45)
-    chatScroll.BackgroundTransparency = 1
-    chatScroll.BorderSizePixel = 0
-    chatScroll.ScrollBarThickness = 5
-    chatScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    chatScroll.CanvasSize = UDim2.new(1, 0, 0, 0)
-    chatScroll.Parent = mainFrame
-    
-    addPadding(chatScroll, 8, 8, 0, 0)
-    
-    local chatListLayout = Instance.new("UIListLayout")
-    chatListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    chatListLayout.Padding = UDim.new(0, 6)
-    chatListLayout.Parent = chatScroll
-    
-    -- 4. Spodní panel (Zadávání promptů a tlačítka)
-    local inputArea = Instance.new("Frame")
-    inputArea.Name = "InputArea"
-    inputArea.Size = UDim2.new(1, 0, 0, 170)
-    inputArea.Position = UDim2.new(0, 0, 1, -170)
-    inputArea.BackgroundColor3 = colors.HeaderBackground
-    inputArea.BorderSizePixel = 0
-    inputArea.Parent = mainFrame
-    
-    addPadding(inputArea, 8, 8, 12, 12)
-    
-    -- Rámeček pro TextBox (vstup)
-    local inputFrame = Instance.new("Frame")
-    inputFrame.Name = "InputFrame"
-    inputFrame.Size = UDim2.new(1, 0, 0, 70)
-    inputFrame.BackgroundColor3 = colors.CardBackground
-    inputFrame.BorderSizePixel = 0
-    inputFrame.Parent = inputArea
-    addCorner(inputFrame, 6)
-    local inputFrameStroke = addStroke(inputFrame, colors.Border, 1)
-    
-    promptInput = Instance.new("TextBox")
-    promptInput.Name = "PromptInput"
-    promptInput.Size = UDim2.new(1, 0, 1, 0)
-    promptInput.BackgroundTransparency = 1
-    promptInput.Text = ""
-    promptInput.PlaceholderText = "Zeptejte se asistenta nebo popište skript, který chcete vytvořit..."
-    promptInput.TextColor3 = colors.Text
-    promptInput.PlaceholderColor3 = colors.SubText
-    promptInput.Font = Enum.Font.SourceSans
-    promptInput.TextSize = 13
-    promptInput.TextWrapped = true
-    promptInput.ClearTextOnFocus = false
-    promptInput.MultiLine = true
-    promptInput.TextXAlignment = Enum.TextXAlignment.Left
-    promptInput.TextYAlignment = Enum.TextYAlignment.Top
-    promptInput.Parent = inputFrame
-    addPadding(promptInput, 6, 6, 8, 8)
-    
-    -- Řada tlačítek 1 (Generovat, Opravit, Vysvětlit)
-    local btnRow1 = Instance.new("Frame")
-    btnRow1.Name = "ButtonRow1"
-    btnRow1.Size = UDim2.new(1, 0, 0, 32)
-    btnRow1.Position = UDim2.new(0, 0, 0, 78)
-    btnRow1.BackgroundTransparency = 1
-    btnRow1.Parent = inputArea
-    
-    local row1Layout = Instance.new("UIListLayout")
-    row1Layout.FillDirection = Enum.FillDirection.Horizontal
-    row1Layout.SortOrder = Enum.SortOrder.LayoutOrder
-    row1Layout.Padding = UDim.new(0, 6)
-    row1Layout.Parent = btnRow1
-    
-    generateBtn = createButton("GenerateBtn", "Generovat", UDim2.new(0.4, -4, 1, 0), UDim2.new(0, 0, 0, 0), btnRow1, colors, function()
-        startGeneration(promptInput.Text, "Generate")
-    end)
-    generateBtn.BackgroundColor3 = colors.Accent
-    generateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    
-    fixBtn = createButton("FixBtn", "Opravit skript", UDim2.new(0.3, -4, 1, 0), UDim2.new(0, 0, 0, 0), btnRow1, colors, function()
-        startGeneration("Opravit vybraný skript", "Fix")
-    end)
-    
-    explainBtn = createButton("ExplainBtn", "Vysvětlit", UDim2.new(0.3, -4, 1, 0), UDim2.new(0, 0, 0, 0), btnRow1, colors, function()
-        startGeneration("Vysvětlit vybraný skript", "Explain")
-    end)
-    
-    -- Řada tlačítek 2 (Kopírovat, Vložit, Nastavení)
-    local btnRow2 = Instance.new("Frame")
-    btnRow2.Name = "ButtonRow2"
-    btnRow2.Size = UDim2.new(1, 0, 0, 28)
-    btnRow2.Position = UDim2.new(0, 0, 0, 116)
-    btnRow2.BackgroundTransparency = 1
-    btnRow2.Parent = inputArea
-    
-    local row2Layout = Instance.new("UIListLayout")
-    row2Layout.FillDirection = Enum.FillDirection.Horizontal
-    row2Layout.SortOrder = Enum.SortOrder.LayoutOrder
-    row2Layout.Padding = UDim.new(0, 6)
-    row2Layout.Parent = btnRow2
-    
-    insertBtn = createButton("InsertBtn", "Vložit do Scriptu", UDim2.new(0.45, -4, 1, 0), UDim2.new(0, 0, 0, 0), btnRow2, colors, function()
-        if lastAIResponseText ~= "" then
-            local success, target = Insert.InsertIntoStudio(lastAIResponseText)
-            if success and target then
-                print("[Roblox AI Assistant] Kód byl úspěšně nahrán do: " .. target:GetFullName())
-            end
-        end
-    end)
-    insertBtn.Visible = false -- Zobrazíme až po obdržení odpovědi
-    
-    copyBtn = createButton("CopyBtn", "Kopírovat kód", UDim2.new(0.35, -4, 1, 0), UDim2.new(0, 0, 0, 0), btnRow2, colors, function()
-        if lastAIResponseText ~= "" then
-            local clean = Insert.CleanMarkdown(lastAIResponseText)
-            pcall(function()
-                -- Vytiskneme do logu pro snadné kopírování, pokud standardní schránka není dostupná
-                print("================ ROBLOX AI ASSISTANT KÓD ================")
-                print(clean)
-                print("=========================================================")
-            end)
-        end
-    end)
-    copyBtn.Visible = false
-    
-    settingsBtn = createButton("SettingsBtn", "Nastavení", UDim2.new(0.2, -4, 1, 0), UDim2.new(0, 0, 0, 0), btnRow2, colors, function()
-        settingsPanel.Visible = not settingsPanel.Visible
-    end)
-    
-    -- 5. Nastavení panel (vysouvací nebo překryvný)
-    settingsPanel = Instance.new("Frame")
-    settingsPanel.Name = "SettingsPanel"
-    settingsPanel.Size = UDim2.new(0.94, 0, 0, 220)
-    settingsPanel.Position = UDim2.new(0.03, 0, 0.05, 0)
-    settingsPanel.BackgroundColor3 = colors.CardBackground
-    settingsPanel.Visible = false
-    settingsPanel.ZIndex = 10
-    settingsPanel.Parent = mainFrame
-    
-    addCorner(settingsPanel, 8)
-    addStroke(settingsPanel, colors.Border, 1)
-    addPadding(settingsPanel, 12, 12, 12, 12)
-    
-    local settingsTitle = Instance.new("TextLabel")
-    settingsTitle.Name = "Title"
-    settingsTitle.Size = UDim2.new(1, 0, 0, 20)
-    settingsTitle.BackgroundTransparency = 1
-    settingsTitle.Text = "Nastavení asistentu"
-    settingsTitle.TextColor3 = colors.Text
-    settingsTitle.Font = Enum.Font.SourceSansBold
-    settingsTitle.TextSize = 14
-    settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
-    settingsTitle.Parent = settingsPanel
-    
-    -- Popisek modelu
-    local modelLabel = Instance.new("TextLabel")
-    modelLabel.Name = "ModelLabel"
-    modelLabel.Size = UDim2.new(1, 0, 0, 16)
-    modelLabel.Position = UDim2.new(0, 0, 0, 25)
-    modelLabel.BackgroundTransparency = 1
-    modelLabel.Text = "Ollama Model:"
-    modelLabel.TextColor3 = colors.Text
-    modelLabel.Font = Enum.Font.SourceSans
-    modelLabel.TextSize = 12
-    modelLabel.TextXAlignment = Enum.TextXAlignment.Left
-    modelLabel.Parent = settingsPanel
-    
-    -- Funkce pro cyklování modelů
-    local function cycleModel(direction)
-        if #availableModels <= 1 then return end
-        currentModelIndex = currentModelIndex + direction
-        if currentModelIndex < 1 then
-            currentModelIndex = #availableModels
-        elseif currentModelIndex > #availableModels then
-            currentModelIndex = 1
-        end
-        local newModel = availableModels[currentModelIndex]
-        Settings.SetModel(newModel)
-        if modelInput then
-            modelInput.Text = newModel
-        end
-        print("[Roblox AI Assistant] Model přepnut na: " .. newModel)
-    end
-
-    -- Tlačítko zpět pro model
-    local prevModelBtn = Instance.new("TextButton")
-    prevModelBtn.Name = "PrevModelBtn"
-    prevModelBtn.Size = UDim2.new(0, 22, 0, 24)
-    prevModelBtn.Position = UDim2.new(0, 0, 0, 44)
-    prevModelBtn.BackgroundColor3 = colors.Button
-    prevModelBtn.Text = "<"
-    prevModelBtn.TextColor3 = colors.ButtonText
-    prevModelBtn.Font = Enum.Font.SourceSansBold
-    prevModelBtn.TextSize = 12
-    prevModelBtn.Parent = settingsPanel
-    addCorner(prevModelBtn, 4)
-    addStroke(prevModelBtn, colors.Border, 1)
-    
-    prevModelBtn.MouseButton1Click:Connect(function()
-        cycleModel(-1)
-    end)
-
-    -- TextBox k ručnímu zápisu modelu
-    modelInput = Instance.new("TextBox")
-    modelInput.Name = "ModelInput"
-    modelInput.Size = UDim2.new(1, -56, 0, 24)
-    modelInput.Position = UDim2.new(0, 28, 0, 44)
-    modelInput.BackgroundColor3 = colors.Background
-    modelInput.Text = Settings.GetModel()
-    modelInput.TextColor3 = colors.Text
-    modelInput.Font = Enum.Font.SourceSans
-    modelInput.TextSize = 12
-    modelInput.Parent = settingsPanel
-    addCorner(modelInput, 4)
-    addStroke(modelInput, colors.Border, 1)
-    
-    modelInput.FocusLost:Connect(function(enterPressed)
-        if modelInput.Text ~= "" then
-            Settings.SetModel(modelInput.Text)
-            print("[Roblox AI Assistant] Model změněn na: " .. modelInput.Text)
-        end
-    end)
-
-    -- Tlačítko vpřed pro model
-    local nextModelBtn = Instance.new("TextButton")
-    nextModelBtn.Name = "NextModelBtn"
-    nextModelBtn.Size = UDim2.new(0, 22, 0, 24)
-    nextModelBtn.Position = UDim2.new(1, -22, 0, 44)
-    nextModelBtn.BackgroundColor3 = colors.Button
-    nextModelBtn.Text = ">"
-    nextModelBtn.TextColor3 = colors.ButtonText
-    nextModelBtn.Font = Enum.Font.SourceSansBold
-    nextModelBtn.TextSize = 12
-    nextModelBtn.Parent = settingsPanel
-    addCorner(nextModelBtn, 4)
-    addStroke(nextModelBtn, colors.Border, 1)
-    
-    nextModelBtn.MouseButton1Click:Connect(function()
-        cycleModel(1)
-    end)
-    
-    -- Popisek adresy backendu
-    local urlLabel = Instance.new("TextLabel")
-    urlLabel.Name = "UrlLabel"
-    urlLabel.Size = UDim2.new(1, 0, 0, 16)
-    urlLabel.Position = UDim2.new(0, 0, 0, 75)
-    urlLabel.BackgroundTransparency = 1
-    urlLabel.Text = "URL Adresa Flask Backendu:"
-    urlLabel.TextColor3 = colors.Text
-    urlLabel.Font = Enum.Font.SourceSans
-    urlLabel.TextSize = 12
-    urlLabel.TextXAlignment = Enum.TextXAlignment.Left
-    urlLabel.Parent = settingsPanel
-    
-    -- Vstup adresy backendu
-    urlInput = Instance.new("TextBox")
-    urlInput.Name = "UrlInput"
-    urlInput.Size = UDim2.new(1, 0, 0, 24)
-    urlInput.Position = UDim2.new(0, 0, 0, 94)
-    urlInput.BackgroundColor3 = colors.Background
-    urlInput.Text = Settings.GetBridgeUrl()
-    urlInput.TextColor3 = colors.Text
-    urlInput.Font = Enum.Font.SourceSans
-    urlInput.TextSize = 12
-    urlInput.Parent = settingsPanel
-    addCorner(urlInput, 4)
-    addStroke(urlInput, colors.Border, 1)
-    
-    urlInput.FocusLost:Connect(function(enterPressed)
-        if urlInput.Text ~= "" then
-            Settings.SetBridgeUrl(urlInput.Text)
-            print("[Roblox AI Assistant] Adresa bridge změněna na: " .. urlInput.Text)
-        end
-    end)
-    
-    -- Stavový řádek připojení
-    statusLabel = Instance.new("TextLabel")
-    statusLabel.Name = "StatusLabel"
-    statusLabel.Size = UDim2.new(1, 0, 0, 18)
-    statusLabel.Position = UDim2.new(0, 0, 0, 128)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "● Načítám stav připojení..."
-    statusLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
-    statusLabel.Font = Enum.Font.SourceSansBold
-    statusLabel.TextSize = 11
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    statusLabel.Parent = settingsPanel
-    
-    -- Tlačítko pro otestování spojení
-    local testBtn = Instance.new("TextButton")
-    testBtn.Name = "TestConnectionBtn"
-    testBtn.Size = UDim2.new(0.46, 0, 0, 26)
-    testBtn.Position = UDim2.new(0, 0, 0, 155)
-    testBtn.BackgroundColor3 = colors.Button
-    testBtn.Text = "Test připojení"
-    testBtn.TextColor3 = colors.ButtonText
-    testBtn.Font = Enum.Font.SourceSans
-    testBtn.TextSize = 12
-    testBtn.Parent = settingsPanel
-    addCorner(testBtn, 4)
-    addStroke(testBtn, colors.Border, 1)
-    testBtn.MouseButton1Click:Connect(testConnection)
-    
-    -- Zavřít/Uložit nastavení
-    local closeSettingsBtn = Instance.new("TextButton")
-    closeSettingsBtn.Name = "CloseSettingsBtn"
-    closeSettingsBtn.Size = UDim2.new(0.48, 0, 0, 26)
-    closeSettingsBtn.Position = UDim2.new(0.52, 0, 0, 155)
-    closeSettingsBtn.BackgroundColor3 = colors.Accent
-    closeSettingsBtn.Text = "Zavřít"
-    closeSettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeSettingsBtn.Font = Enum.Font.SourceSansBold
-    closeSettingsBtn.TextSize = 12
-    closeSettingsBtn.Parent = settingsPanel
-    addCorner(closeSettingsBtn, 4)
-    
-    closeSettingsBtn.MouseButton1Click:Connect(function()
-        settingsPanel.Visible = false
-    end)
-    
-    -- 6. Detekce změn motivu vzhledu
-    Theme.OnThemeChanged(function(newColors)
-        applyThemeColors(newColors)
-    end)
-    
-    applyThemeColors(colors)
-    
-    -- Úvodní uvítací bublina od AI
-    addChatBubble("AI", "Ahoj! Jsem tvůj lokální Roblox AI Assistant spuštěný přes Ollamu. Jak ti mohu dnes pomoci s programováním v Luau?", colors)
-    
-    -- Po startu otestujeme připojení na pozadí
-    task.spawn(testConnection)
+	-- ==========================================
+	-- INTEGRACE AGENT MÓDU
+	-- ==========================================
+	addPadding(agentPanel, 8, 8, 8, 8)
+	
+	local taskLabel = Instance.new("TextLabel")
+	taskLabel.Size = UDim2.new(1, 0, 0, 18)
+	taskLabel.BackgroundTransparency = 1
+	taskLabel.Text = "Zadej vývojový úkol pro AI Agenta:"
+	taskLabel.TextColor3 = colors.Text
+	taskLabel.Font = Enum.Font.SourceSansBold
+	taskLabel.TextSize = 13
+	taskLabel.TextXAlignment = Enum.TextXAlignment.Left
+	taskLabel.Parent = agentPanel
+	
+	agentTaskInput = Instance.new("TextBox")
+	agentTaskInput.Size = UDim2.new(1, 0, 0, 44)
+	agentTaskInput.Position = UDim2.new(0, 0, 0, 22)
+	agentTaskInput.BackgroundColor3 = colors.CardBackground
+	agentTaskInput.Text = "Oprav mining systém a zkontroluj RemoteEvents."
+	agentTaskInput.TextColor3 = colors.Text
+	agentTaskInput.Font = Enum.Font.SourceSans
+	agentTaskInput.TextSize = 13
+	agentTaskInput.TextWrapped = true
+	agentTaskInput.TextXAlignment = Enum.TextXAlignment.Left
+	agentTaskInput.TextYAlignment = Enum.TextYAlignment.Top
+	agentTaskInput.Parent = agentPanel
+	addCorner(agentTaskInput, 6)
+	addStroke(agentTaskInput, colors.Border, 1)
+	addPadding(agentTaskInput, 4, 4, 6, 6)
+	
+	agentStartBtn = createButton("AgentStartBtn", "🚀 Spustit AI Agenta", UDim2.new(1, 0, 0, 28), UDim2.new(0, 0, 0, 72), agentPanel, colors, startAgentTask)
+	agentStartBtn.BackgroundColor3 = colors.Accent
+	agentStartBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	
+	-- Stavový odznak
+	agentStatusBadge = Instance.new("TextLabel")
+	agentStatusBadge.Size = UDim2.new(1, 0, 0, 20)
+	agentStatusBadge.Position = UDim2.new(0, 0, 0, 106)
+	agentStatusBadge.BackgroundColor3 = colors.CardBackground
+	agentStatusBadge.Text = " STAV: ČEKÁ NA ZADÁNÍ ÚKOLU "
+	agentStatusBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+	agentStatusBadge.Font = Enum.Font.SourceSansBold
+	agentStatusBadge.TextSize = 11
+	agentStatusBadge.Parent = agentPanel
+	addCorner(agentStatusBadge, 4)
+	
+	-- Log feed průběhu
+	agentLogScroll = Instance.new("ScrollingFrame")
+	agentLogScroll.Size = UDim2.new(1, 0, 1, -250)
+	agentLogScroll.Position = UDim2.new(0, 0, 0, 132)
+	agentLogScroll.BackgroundColor3 = colors.CardBackground
+	agentLogScroll.ScrollBarThickness = 4
+	agentLogScroll.Parent = agentPanel
+	addCorner(agentLogScroll, 6)
+	addStroke(agentLogScroll, colors.Border, 1)
+	addPadding(agentLogScroll, 6, 6, 6, 6)
+	
+	local logLayout = Instance.new("UIListLayout")
+	logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	logLayout.Padding = UDim.new(0, 4)
+	logLayout.Parent = agentLogScroll
+	
+	-- Schvalovací rámec pro Diff změn
+	pendingDiffFrame = Instance.new("Frame")
+	pendingDiffFrame.Size = UDim2.new(1, 0, 0, 110)
+	pendingDiffFrame.Position = UDim2.new(0, 0, 1, -112)
+	pendingDiffFrame.BackgroundColor3 = Color3.fromRGB(30, 25, 15)
+	pendingDiffFrame.Visible = false
+	pendingDiffFrame.Parent = agentPanel
+	addCorner(pendingDiffFrame, 6)
+	addStroke(pendingDiffFrame, Color3.fromRGB(200, 150, 50), 1)
+	addPadding(pendingDiffFrame, 6, 6, 8, 8)
+	
+	diffPathLabel = Instance.new("TextLabel")
+	diffPathLabel.Size = UDim2.new(1, 0, 0, 16)
+	diffPathLabel.BackgroundTransparency = 1
+	diffPathLabel.Text = "Skript: -"
+	diffPathLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+	diffPathLabel.Font = Enum.Font.SourceSansBold
+	diffPathLabel.TextSize = 12
+	diffPathLabel.TextXAlignment = Enum.TextXAlignment.Left
+	diffPathLabel.Parent = pendingDiffFrame
+	
+	diffReasonLabel = Instance.new("TextLabel")
+	diffReasonLabel.Size = UDim2.new(1, 0, 0, 14)
+	diffReasonLabel.Position = UDim2.new(0, 0, 0, 16)
+	diffReasonLabel.BackgroundTransparency = 1
+	diffReasonLabel.Text = "Důvod: -"
+	diffReasonLabel.TextColor3 = colors.SubText
+	diffReasonLabel.Font = Enum.Font.SourceSansItalic
+	diffReasonLabel.TextSize = 11
+	diffReasonLabel.TextXAlignment = Enum.TextXAlignment.Left
+	diffReasonLabel.Parent = pendingDiffFrame
+	
+	approveDiffBtn = createButton("ApproveBtn", "✓ Aplikovat Změnu", UDim2.new(0.48, 0, 0, 26), UDim2.new(0, 0, 1, -28), pendingDiffFrame, colors, function()
+		if activeTaskId then
+			Api.AgentApprove(activeTaskId, "all", function(success, res)
+				if success then
+					addAgentLog("Změna byla úspěšně aplikována v Roblox Studiu.", "success")
+					processAgentStep(activeTaskId, "Změna kódu schválena uživatelem a aplikována.")
+				end
+			end)
+		end
+	end)
+	approveDiffBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+	approveDiffBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	
+	rejectDiffBtn = createButton("RejectBtn", "✕ Zamítnout", UDim2.new(0.48, 0, 0, 26), UDim2.new(0.52, 0, 1, -28), pendingDiffFrame, colors, function()
+		if activeTaskId then
+			Api.AgentReject(activeTaskId, "all", function(success, res)
+				addAgentLog("Změna byla uživatelem zamítnuta.", "warning")
+				processAgentStep(activeTaskId, "Uživatel zamítl navrženou změnu.")
+			end)
+		end
+	end)
+	rejectDiffBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+	rejectDiffBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	
+	return pluginGui
 end
 
 return UI

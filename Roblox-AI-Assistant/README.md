@@ -1,117 +1,75 @@
-# Roblox AI Assistant 🤖🎮
+# Roblox AI Local Agent 🤖🎮 (david.windsedl.cz)
+
+![Roblox AI Local Agent Preview](/src/assets/images/roblox_agent_preview_1786321753955.jpg)
 
 [Česká verze níže / Czech version below]
 
 ### 🇺🇸 English Version
 
-Welcome to the **Roblox AI Assistant** plugin folder! This directory contains the complete source code, configurations, and backend bridge scripts to run the local AI Coding Assistant inside Roblox Studio.
+Welcome to the **Roblox AI Local Agent** project! This directory contains the complete source code, agentic engine, tools, and backend bridge scripts to run an autonomous local AI Development Agent inside **Roblox Studio**.
 
-This project is a fully local and highly secure AI coding assistant integrated directly into **Roblox Studio** (2025+). It runs entirely offline, meaning **your game code never leaves your computer**. It uses **Ollama** on your local machine to run powerful LLM models (such as `qwen2.5-coder:14b`) and a lightweight **Python Flask backend** acting as a secure bridge.
+This project is a fully local, privacy-first AI agent integrated directly into **Roblox Studio** (2025+). Unlike basic chat scripts, this agent can inspect your project hierarchy, search scripts across services, analyze dependencies, propose code edits with full Diff previews, and apply modifications safely using `ChangeHistoryService` undo points.
 
 ---
 
 ## 📂 Repository Structure & Folder Contents
-You are currently inside the `Roblox-AI-Assistant` folder. This is the main package folder containing the plugin:
-- **`src/`**: Contains the Luau source code modules for the Roblox Studio Plugin (`Main.server.lua`, `UI.lua`, `Api.lua`, `Theme.lua`, `Settings.lua`, etc.).
-- **`backend/`**: Contains the Python Flask bridge server (`app.py`).
-- **`default.project.json`**: Rojo configuration file for compilation and syncing.
-- **`requirements.txt`**: Python dependencies list.
+- **`src/`**: Contains the Luau source code modules for the Roblox Studio Plugin:
+  - `Main.server.lua`: Plugin entry point & toolbar button.
+  - `UI.lua`: Tabbed interface (Chat Mode & Agent Mode) with step logs & diff approval modal.
+  - `Api.lua`: Async HTTP client for backend communicate & agent state synchronization.
+  - `Tools.lua`: Studio execution layer for tools (`read_script`, `grep_scripts`, `search_scripts`, `get_explorer_tree`, `edit_script`, `create_script`).
+  - `Diff.lua`: Luau diff generator for side-by-side code review.
+  - `Theme.lua`, `Settings.lua`, `Widgets.lua`, `Insert.lua`, `Fix.lua`, `Explain.lua`.
+- **`backend/`**: Python Flask Agent Server:
+  - `app.py`: REST API endpoints (`/health`, `/chat`, `/agent/start`, `/agent/step`, `/agent/approve`, `/agent/reject`, `/agent/status`).
+  - `config.py`: Local configuration manager.
+  - `agent/agent.py`: Agent Engine orchestrating tool calling & execution loops.
+  - `agent/planner.py`: System prompt builder & LLM JSON action parser.
+  - `agent/state.py`: Structured task state & pending diffs manager.
+  - `agent/tools.py`: Tool definitions & schemas.
+- **`default.project.json`**: Rojo compilation config.
+- **`requirements.txt`**: Python dependencies list (`flask`, `flask-cors`, `requests`).
 
 ---
 
 ## 🛠️ Quick Start Guide (English)
 
 ### 1. Install Ollama and Download a Model
-1. Download and install [Ollama](https://ollama.com/) for your OS.
-2. Open your terminal and pull the recommended coding model:
-   ```bash
-   ollama run qwen2.5-coder:14b
-   ```
-   *(For PCs with less RAM/VRAM, you can use smaller variants like `qwen2.5-coder:7b` or `qwen2.5-coder:1.5b`.)*
+```bash
+ollama run qwen2.5-coder:14b
+```
 
-### 2. Run the Python Backend Bridge
-Navigate to this folder in your terminal and launch the Flask server:
+### 2. Run the Python Agent Backend
 ```bash
 pip install -r requirements.txt
 python backend/app.py
 ```
-The server will start at `http://127.0.0.1:5000`.
+The server will start locally at `http://127.0.0.1:5000`.
 
 ### 3. Sync to Roblox Studio via Rojo
-Build and serve the plugin using Rojo from this folder:
 ```bash
 rojo plugin install
 rojo serve
 ```
-
-### 4. Connect in Roblox Studio
-1. Open your Roblox Studio place.
-2. Open the **Rojo** plugin panel and click **Connect**.
-3. The plugin will immediately load into your project. An AI Assistant button will appear in your top bar.
-4. Save it as a permanent local plugin by right-clicking on the loaded folder in your Explorer and selecting **Save as Local Plugin...**.
 
 ---
 
 ### 🇨🇿 Česká verze
 
-Vítejte v adresáři **Roblox AI Assistant**! Tato složka obsahuje kompletní zdrojové kódy, konfigurace a skripty backendového bridge pro spuštění lokálního AI pomocníka přímo v Roblox Studio.
+Vítejte v projektu **Roblox AI Local Agent**! Tato složka obsahuje kompletní zdrojové kódy, agentní engine, nástroje a backend bridge pro spuštění autonomního lokálního AI vývojového agenta v **Roblox Studio**.
 
-Tento projekt je plně lokální a vysoce zabezpečený AI programovací asistent integrovaný přímo do **Roblox Studio** (2025+). Funguje jako integrovaný plugin s moderním rozhraním, který komunikuje s lokálně běžícím LLM modelem (především `qwen2.5-coder:14b`) skrze nástroj **Ollama** a lehký **Python Flask backend**.
-
-Celý projekt běží offline – **žádný váš kód neopustí váš počítač!**
-
----
-
-## 📂 Obsah této složky
-Právě se nacházíte ve složce `Roblox-AI-Assistant`, která je hlavním balíčkem projektu:
-- **`src/`**: Obsahuje zdrojové kódy v Luau pro Roblox Studio Plugin (`Main.server.lua`, `UI.lua`, `Api.lua`, `Theme.lua`, `Settings.lua`, atd.).
-- **`backend/`**: Obsahuje Python Flask bridge server (`app.py`).
-- **`default.project.json`**: Konfigurační soubor Rojo pro synchronizaci a sestavení.
-- **`requirements.txt`**: Seznam Python závislostí.
+Na rozdíl od obyčejného chatu dokáže tento AI Agent:
+1. Prohledat hierarchii vašeho Roblox projektu (`Workspace`, `ServerScriptService`, `ReplicatedStorage`, atd.).
+2. Přečíst zdrojové kódy skriptů a vyhledat události (např. `RemoteEvent`).
+3. Analyzovat chyby a logy z konzole.
+4. Navrhnout úpravu kódu v podrobném náhledu rozdílů (**Diff**).
+5. Po vašem schválení úpravu bezpečně zapsat s možností vrátit zpět (Undo přes `ChangeHistoryService`).
 
 ---
 
-## 🛠️ Rychlý návod k instalaci (Čeština)
-
-### 1. Příprava Ollamy a stažení modelu
-1. Stáhněte a nainstalujte si [Ollamu](https://ollama.com/).
-2. Spusťte terminál a stáhněte doporučený model:
-   ```bash
-   ollama run qwen2.5-coder:14b
-   ```
-   *(Pro méně výkonné počítače s menší RAM/VRAM můžete použít `qwen2.5-coder:7b` nebo `qwen2.5-coder:1.5b`.)*
-
-### 2. Spuštění Python Backend serveru
-Přejděte v terminálu do této složky a spusťte Flask server:
-```bash
-pip install -r requirements.txt
-python backend/app.py
-```
-Server se spustí na adrese `http://127.0.0.1:5000`.
-
-### 3. Synchronizace do Roblox Studio přes Rojo
-Sestavte a spusťte Rojo server z této složky:
-```bash
-rojo plugin install
-rojo serve
-```
-
-### 4. Propojení v Roblox Studiu
-1. Otevřete **Roblox Studio** a váš projekt.
-2. V panelu pluginu **Rojo** stiskněte **Connect**.
-3. Plugin se okamžitě nahraje a v horní liště se objeví tlačítko **AI Assistant**.
-4. Uložte ho jako trvalý lokální plugin kliknutím pravým tlačítkem na složku v Exploreru a zvolením **Save as Local Plugin...**.
-
----
-
-## 💡 Features / Funkce
-* **Interactive Chat / Interaktivní Chat**: Context-aware chat with direct code insertion into open scripts / Kontextový chat s přímým vkládáním kódu do otevřených skriptů.
-* **Auto-Fix / Automatická oprava**: Analyze and fix syntax or logical bugs in selected explorer scripts / Analyzuje a opravuje syntaktické i logické chyby ve vybraných skriptech.
-* **Explain Code / Vysvětlení kódu**: Explain complex Luau logic, events, and services step-by-step / Krok za krokem vysvětluje složitou Luau logiku, události a služby.
-* **Smart Context / Kontext výběru**: The assistant automatically detects which object is selected in Roblox Studio Explorer / Asistent automaticky rozpozná, jaký objekt máte označený v Roblox Studio Exploreru.
-* **Connection Health / Diagnostika**: Validate connections with Ollama and list active local models directly from Settings / Ověření spojení s Ollamou a výpis aktivních lokálních modelů přímo v Nastavení.
-
----
-
-## 📄 License / Licence
-MIT License. Feel free to modify and build upon this project! / MIT Licence. Projekt můžete volně upravovat a stavět na něm!
+## 💡 Hlavní Funkce / Core Features
+* **🤖 Agent Mód (Autonomous Agent Loop)**: Zadejte úkol např. *"Oprav mining systém a zkontroluj RemoteEvents"* a agent autonomně projde kód, najde chyby a navrhne řešení.
+* **🔎 Project Context & Search**: Nástroje `grep_scripts`, `search_scripts` a `get_explorer_tree` umožňují agentovi okamžitě pochopit strukturu hry.
+* **🛡️ Safe Editing & Diff Approval**: Žádné destruktivní přepisy bez vašeho vědomí! Každá změna vyžaduje explicitní tlačítko **[Aplikovat Změnu]**.
+* **💬 Chat Mód**: Rychlé dotazy k Luau syntaxi a službám Robloxu.
+* **🔒 100% Offline & Privacy First**: Vše běžé lokálně přes Ollamu.
